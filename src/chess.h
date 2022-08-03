@@ -11,17 +11,24 @@
 
 /* BASIC DEFINITIONS */
 
+#define ABS(i) ((i) < 0 ? -(i) : (i))
+
 typedef unsigned int uint;
 typedef unsigned char uchar;
 typedef unsigned short ushort;
 
 typedef enum colour {
   BLACK, WHITE
-} COLOUR;
+} COLOUR_t;
 
 typedef enum pieces {
   EMPTY, PAWN, ROOK, KNIGHT, BISHOP, QUEEN, KING
-} PIECES;
+} PIECE_t;
+
+typedef enum compass {
+  NORTH = 8, SOUTH = -8, EAST = 1, WEST = -1,
+  NE = 9, NW = 7, SE = -7, SW = -9
+} COMPASS_t;
 
 #define MAX_MOVES 64
 
@@ -31,7 +38,7 @@ typedef enum pieces {
                              0123456789012 */
 static const char pieces_string[] = " prnbqkPRNBQK";
 
-static const PIECES back_row[] = 
+static const PIECE_t back_row[] = 
   {ROOK, KNIGHT, BISHOP, QUEEN, 
   KING, BISHOP, KNIGHT, ROOK};
 
@@ -55,7 +62,8 @@ typedef struct game {
      And the 3 upper bits indicates the wanted piece in case of promotion.*/
   ushort* moves;
 
-  /* Size of moves */
+  /* Number of played moves
+     Allocated memory for moves */
   uint moves_len, max_moves;
 
   /* Numbers of moves since last piece taken or pawn moded */
@@ -73,8 +81,18 @@ typedef struct game {
 } game_t;
 
 typedef game_t* game_p;
+/* tile t */
+#define PIECE(t) ((t) & 7)
+
+#define COLOUR(t) ((t) & 8)
 
 #define BOARD(g,i,j) (g)->board[COORD2INT(i,j)]
+
+#define CPIECE(g,i,j) ((BOARD(g,i,j))&7)
+
+#define CCOLOUR(g,i,j) ((BOARD(g,i,j))&8)
+
+#define OPPONENT(c) ((c) ? BLACK : WHITE)
 
 /* Given a game_p g and a colour c, it is equal to 0 if the castle is 
    not available.
@@ -115,9 +133,26 @@ void game_print(game_p g);
    "event", cannot move into a pice of the same colour, 
    cannot go through pieces, promotion, en passant, ...*/
 
+/* Desc : Iterate from the position pos in the direction given by compass
+   while not reaching an obstacle or a threat.
+   Return : the number of empty tiles before obs or threat.
+   If threat is not null and a threat is reached, *threat is set to 1.
+   (or zero if it is an obstacle)
+ */
+int iter(game_p g, COLOUR_t c, uchar pos, COMPASS_t comp, int *threat); 
+
+int is_tile_threatened_as_colour(game_p g, 
+    uchar pos, COLOUR_t c, uchar* threats);
+
+int is_color_in_check(game_p g, COLOUR_t c);
+
+int is_move_into_check(game_p g, ushort move);
+
+int possible_moves_pos(game_p g, uchar pos, ushort* dests); 
+
 /* 4 <= len <= 5 (carefull with null terminating character)
    check format ([a-h][1-8]){2}[prcbqk]{0,1}*/ 
-ushort string_to_move(char* s);
+int string_to_move(char* s, ushort *m);
 
 /* Res must be a valid pointer of length at least 5 or 6 depending 
    on the case*/

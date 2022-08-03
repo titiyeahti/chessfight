@@ -39,13 +39,15 @@ void game_free(game_p g){
 
 void board_print(game_p g){
   int i, j;
-  for(i=8; i>0; --i){
+  for(i=7; i>-1; i--){
+    printf("%d  ", i+1);
     for(j=0; j<8; j++)
       printf("%c ", PIECE2CHAR(BOARD(g, i, j)));
     
     printf("\n");
   }
 
+  printf("\n   A B C D E F G H\n");
   printf("\n");
 }
 
@@ -72,6 +74,103 @@ void game_print(game_p g){
   moves_print(g);
 }
 
+int iter(game_p g, COLOUR_t c, uchar pos, COMPASS_t comp, int *threat){
+  int count=0;
+  for(;;){
+    pos += comp;
+    if(pos<0 || pos>63)
+      break;
+
+    if(g->board[pos]){
+      if(threat)
+        *threat = (COLOUR(g->board[pos]) == c) ? 0 : 1;
+
+      break;
+    }
+
+    count ++;
+  }
+
+  return count;
+}
+
+int is_tile_threatened_as_colour(game_p g, 
+    uchar pos, COLOUr_t c, uchar* threats){
+  /* TODO */
+  /* Look for knights around
+     Look lines, columns or diags around the tile until 
+     obstacle or threat */
+  return 0;
+}
+
+int is_color_in_check(game_p g, COLOUR_t c, uchar* threats){
+  return is_tile_threatened_as_colour(g,KING_POS(g,c), c, threats);
+}
+
+int is_move_into_check(game_p g, ushort move){
+  /* TODO */
+  /* Check if the move offers a line of sight on the king
+     either strait or diagonal.
+     If it is the case check if there is a chess
+
+     if on diagonal, ABS(i-ik) == ABS(j-jk)
+     and direction is (i-ik), (j-jk)
+
+     if on a line or column i==ik of j==jk
+   */
+
+  return 0;
+}
+
+int possible_moves_pos(game_p g, uchar pos, ushort* pmoves){
+  int count, i, j;
+  uchar dest;
+  PIECE_t p;
+  COLOUR_t c;
+  INT2COORD(pos,i,j);
+  p = CPIECE(g,i,j);
+  c = CCOLOUR(g,i,j);
+  
+  count = 0;
+  switch(p){
+    case EMPTY:
+      break;
+
+    case PAWN:
+      /* 1 step forward */
+      /* 2 steps forward if on starting pos */
+      /* En passant (row 4(w) and 5(w) so 3 and 4 in our case)
+         and if there is an enemy pawn that arrived next to pos
+         last round*/
+      /* Promote */
+      /* strike diagonal forward */
+      break;
+
+    case ROOK:
+      /* row, columns */
+      break;
+
+    case KNIGHT:
+      /* check the eight possible tiles */
+      break;
+
+    case BISHOP:
+      /* diagonals */
+      break;
+
+    case QUEEN:
+      /* rows, columns, diagonals */
+      break;
+
+    case KING:
+      /* one step every direction */
+      /* castle */
+      break;
+  }
+
+}
+
+
 int string_to_move(char* s, ushort *m){
   int len = strlen(s);
   int i, flag;
@@ -95,12 +194,12 @@ int string_to_move(char* s, ushort *m){
   }
 
   /* start */
-  *m = COORD2INT((char) (s[1] - '1'),
-      (char) (s[0] - 'a'));
+  *m = COORD2INT((int) (s[1] - '1'),
+      (uint) (s[0] - 'a'));
 
   /* dest */
-  *m += COORD2INT((char) (s[3] - '1'),
-      (char) (s[2] - 'a')) << 6;
+  *m += COORD2INT((int) (s[3] - '1'),
+      (uint) (s[2] - 'a')) << 6;
 
   /* prom */
   *m += flag << 13; 
@@ -122,11 +221,10 @@ void move_to_string(ushort m, char* res){
   prom = MOVE_PROM(m);
 
   if(prom){
-    res[4] = pieces_string[m];
+    res[4] = pieces_string[prom];
     res[5] = '\0';
   }
   else {
     res[4] = '\0';
   }
 }
-  
