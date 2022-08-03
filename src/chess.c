@@ -39,7 +39,7 @@ void game_free(game_p g){
 
 void board_print(game_p g){
   int i, j;
-  for(i=0; i<8; i++){
+  for(i=8; i>0; --i){
     for(j=0; j<8; j++)
       printf("%c ", PIECE2CHAR(BOARD(g, i, j)));
     
@@ -72,7 +72,41 @@ void game_print(game_p g){
   moves_print(g);
 }
 
-ushort string_to_move(char* s);
+int string_to_move(char* s, ushort *m){
+  int len = strlen(s);
+  int i, flag;
+  if(len<4 || len> 5)
+    return EXIT_FAILURE;
+
+  for(i=0; i<4; i++){
+    if((i&1) && ((s[i] < '1') || (s[i] > '8')))
+      return EXIT_FAILURE;
+    if((!(i&1)) && ((s[i] < 'a') || (s[i] > 'h')))
+      return EXIT_FAILURE;
+  }
+
+  if(len==5){
+    flag = 0;
+    for(i=2; i<6 && !flag; i++)
+      flag = (s[4] == pieces_string[i]) ? i : 0;
+
+    if(!flag) 
+      return EXIT_FAILURE;
+  }
+
+  /* start */
+  *m = COORD2INT((char) (s[1] - '1'),
+      (char) (s[0] - 'a'));
+
+  /* dest */
+  *m += COORD2INT((char) (s[3] - '1'),
+      (char) (s[2] - 'a')) << 6;
+
+  /* prom */
+  *m += flag << 13; 
+
+  return EXIT_SUCCESS;
+}
 
 void move_to_string(ushort m, char* res){
   int i, j, prom;
