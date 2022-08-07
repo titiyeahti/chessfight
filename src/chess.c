@@ -74,19 +74,24 @@ void game_print(game_p g){
   moves_print(g);
 }
 
-int iter(game_p g, COLOUR_t c, uchar pos, COMPASS_t comp, int *threat){
+int iter_dir(game_p g, COLOUR_t c, ITERMODE_t m,
+    COMPASS_t comp, int max, uchar pos, uchar* dests){ 
   int count=0;
-  for(;;){
-    pos += comp;
-    if(pos<0 || pos>63)
-      break;
+  int dest;
+  max = max ? max : 8;
+  for(dest=pos+comp; dest>0 && dest<64 && count<max; dest+=comp){
+    if(g->board[dest]){
+      /* If we are looking for the threat, there is only one value to 
+         return per direction*/ 
+      if(dest)
+        dests[m==PREY ? 0 : count] = dest;
 
-    if(g->board[pos]){
-      if(threat)
-        *threat = (COLOUR(g->board[pos]) == c) ? 0 : 1;
-
+      count++;
       break;
     }
+    
+    if(m == HUNTER && dests)
+      dests[count] = dest;
 
     count ++;
   }
@@ -94,21 +99,56 @@ int iter(game_p g, COLOUR_t c, uchar pos, COMPASS_t comp, int *threat){
   return count;
 }
 
+int iter_knight(game_p g, COLOUR_t c, ITERMODE_t m, uchar pos, uchar* dests){
+  int count = 0;
+  int i;
+  int dest;
+  for(i=0; i<8; i++){
+    dest = pos + knight_moves[i];
+    /* in the board */
+    if(dest > 0 && dest < 64){
+      /* if it is an ennemy case OR we hunt and this is an empty case */
+      if((g->board[dest] && COLOUR(g->board[dest]) != c) 
+          || (!g->board[dest] && HUNTER)){
+        if(dests)
+          dests[count] = dest;
+
+        count++;
+      }
+    }
+  }
+
+  return count;
+}
+
 int is_tile_threatened_as_colour(game_p g, 
-    uchar pos, COLOUr_t c, uchar* threats){
-  /* TODO */
-  /* Look for knights around
-     Look lines, columns or diags around the tile until 
+    uchar pos, COLOUR_t c, uchar* threats){
+  uchar *current_threats = threats;
+  int count, i;
+  
+  /* Look for knights around*/
+  count += iter_knight(g, c, PREY, pos, current_threats);
+
+
+  /* Look lines, columns or diags around the tile until 
      obstacle or threat */
-  return 0;
+  for(i=0; i<8; i++){
+    current_threats = current_threats ? threats + count : NULL;
+    count += iter_dir(g, c, PREY, compass_array[i], 0, pos, current_threats);
+  }
+
+  return count;
 }
 
 int is_color_in_check(game_p g, COLOUR_t c, uchar* threats){
-  return is_tile_threatened_as_colour(g,KING_POS(g,c), c, threats);
+  return is_tile_threatened_as_colour(g, KING_POS(g,c), c, threats);
 }
 
 int is_move_into_check(game_p g, ushort move){
-  /* TODO */
+  uchar origin = MOVE_START(move);
+  uchar dest = MOVE_END(move);
+
+
   /* Check if the move offers a line of sight on the king
      either strait or diagonal.
      If it is the case check if there is a chess
@@ -123,13 +163,17 @@ int is_move_into_check(game_p g, ushort move){
 }
 
 int possible_moves_pos(game_p g, uchar pos, ushort* pmoves){
-  int count, i, j;
-  uchar dest;
+  int count, nb_moves, i;
+  uchar dest, val;
   PIECE_t p;
   COLOUR_t c;
-  INT2COORD(pos,i,j);
-  p = CPIECE(g,i,j);
-  c = CCOLOUR(g,i,j);
+  COMPASS_t direc;
+  /* 3*7 + 6 maximum number of attacked case by a queen*/
+  uchar dests_array[27];
+  uchar *dests = pmoves ? dests_array : NULL;
+  val = g->board[pos];
+  p = PIECE(val);
+  c = COLOUR(val);
   
   count = 0;
   switch(p){
@@ -138,36 +182,65 @@ int possible_moves_pos(game_p g, uchar pos, ushort* pmoves){
 
     case PAWN:
       /* 1 step forward */
+      direc = (1-2*c)*NORTH;
       /* 2 steps forward if on starting pos */
-      /* En passant (row 4(w) and 5(w) so 3 and 4 in our case)
+      /* strike diagonal forward + en passant*/
+      direc = (1-2*c)*NE;
+      direc = (1-2*c)*NW;
+      /* En passant (row 4(w) and 5(b) so 3 and 4 in our case)
          and if there is an enemy pawn that arrived next to pos
          last round*/
-      /* Promote */
-      /* strike diagonal forward */
+      /* Promote : processed at the end of function */
       break;
 
     case ROOK:
-      /* row, columns */
+      for(i=0; i<4; i++){
+        dests = dests ? dests_array + count : NULL;
+        count += iter_dir(g, c, HUNTER, compass_array[i], 0, pos, dests);
+      }
+
       break;
 
     case KNIGHT:
-      /* check the eight possible tiles */
+      count += iter_knight(g, c, HUNTER, pos, dests);
       break;
 
     case BISHOP:
-      /* diagonals */
+      for(i=4; i<8; i++){
+        dests = dests ? dests_array + count : NULL;
+        count += iter_dir(g, c, HUNTER, compass_array[i], 0, pos, dests);
+      }
+
       break;
 
     case QUEEN:
-      /* rows, columns, diagonals */
+      for(i=0; i<8; i++){
+        dests = dests ? dests_array + count : NULL;
+        count += iter_dir(g, c, HUNTER, compass_array[i], 0, pos, dests);
+      }
+
       break;
 
     case KING:
       /* one step every direction */
-      /* castle */
+      for(i=0; i<8; i++){
+        dests = dests ? dests_array + count : NULL;
+        count += iter_dir(g, c, HUNTER, compass_array[i], 1, pos, dests);
+      }
+      /* TODO castle */
       break;
   }
 
+  nb_moves = 0;
+  if(p == KING){
+  }
+  else{
+    if(p == PAWN){
+      /* PROMOTE : if reach last row add the 
+         4 possible promotion moves (qnrb)*/
+  }
+
+  return count;
 }
 
 

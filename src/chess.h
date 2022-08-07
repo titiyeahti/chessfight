@@ -30,6 +30,10 @@ typedef enum compass {
   NE = 9, NW = 7, SE = -7, SW = -9
 } COMPASS_t;
 
+typedef enum iter_mode{
+  HUNTER, PREY
+} ITERMODE_t;
+
 #define MAX_MOVES 64
 
 /* This const string will be used to convert pieces to char.
@@ -38,10 +42,21 @@ typedef enum compass {
                              0123456789012 */
 static const char pieces_string[] = " prnbqkPRNBQK";
 
-static const PIECE_t back_row[] = 
-  {ROOK, KNIGHT, BISHOP, QUEEN, 
-  KING, BISHOP, KNIGHT, ROOK};
+static const PIECE_t back_row[] = {
+  ROOK, KNIGHT, BISHOP, QUEEN, 
+  KING, BISHOP, KNIGHT, ROOK
+};
 
+/* The calculs are here to ease the reading and do not matter because
+   they are done during compilation */
+static const int knight_moves[] = {
+  2*8 + 1, 2*8 - 1, 2*1 - 8, 2*1 + 8,
+  -2*8 + 1, -2*8 - 1, -2*1 + 8, -2*1 - 8
+};
+
+static const COMPASS_t compass_array[8] = {
+  NORTH, SOUTH, EAST, WEST, NE, SE, NW, SW
+};
 
 #define PIECE2CHAR(p) \
   ((p) & 8 ? pieces_string[6 + ((p)&7)] : pieces_string[(p)&7])
@@ -138,8 +153,13 @@ void game_print(game_p g);
    Return : the number of empty tiles before obs or threat.
    If threat is not null and a threat is reached, *threat is set to 1.
    (or zero if it is an obstacle)
+
+  TODO : comment better
  */
-int iter(game_p g, COLOUR_t c, uchar pos, COMPASS_t comp, int *threat); 
+int iter_dir(game_p g, COLOUR_t c, ITERMODE_t m,
+    COMPASS_t comp, int max, uchar pos, uchar* dests); 
+
+int iter_knight(game_p g, COLOUR_t c, ITERMODE_t m, uchar pos, uchar* dests);
 
 int is_tile_threatened_as_colour(game_p g, 
     uchar pos, COLOUR_t c, uchar* threats);
