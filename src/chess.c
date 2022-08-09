@@ -23,7 +23,7 @@ game_p game_new(void){
   res->moves = malloc(sizeof(ushort)*MAX_MOVES);
   res->moves_len = 0;
   res->max_moves = MAX_MOVES;
-  res->move_streak_len = 0;
+  res->moves_streak_len = 0;
 
   res->castle_kings = 60 << 4;
   res->castle_kings += 4 << 10;
@@ -232,7 +232,6 @@ int is_color_in_check(game_p g, COLOUR_t c, uchar* threats){
   return is_tile_threatened_as_colour(g, KING_POS(g,c), c, threats);
 }
 
-
 /* TODO */
 int is_move_into_check(game_p g, ushort move){
   uchar origin = MOVE_START(move);
@@ -274,7 +273,7 @@ int is_move_legal(game_p g, ushort move){
   return res;
 }
 
-
+/* the design of this function is flawless*/
 int possible_moves_pos(game_p g, uchar pos, ushort* pmoves){
   int count, nb_moves, i, flag;
   uchar dest, val;
@@ -461,6 +460,86 @@ int possible_moves_pos(game_p g, uchar pos, ushort* pmoves){
   }
 
   return nb_moves; 
+}
+
+int move_do(game_p g, ushort move){
+  /* check if castle 
+      move king and rook
+      + update castle_kings
+     rook update castle king
+     upromotes
+     en passant 
+     update move len, move_streak_len 
+   */
+  int dest, origin, delta, pos_rook;
+  uchar temp;
+  PIECE_t p;
+  COLOUR_t c;
+  COMPASS_t comp;
+  origin = MOVE_START(move);
+  dest = MOVE_END(move);
+
+  c = PCOLOUR(g,origin);
+  p = PPIECE(g,origin);
+  delta = dest - origin;
+
+  if(g->moves_len == g->max_moves){
+    g->max_moves += MAX_MOVES;
+    g->moves = realloc(g->moves, g->max_moves * sizeof(ushort));
+  }
+
+  g->moves[g->moves_len] = move; 
+  g->moves_len ++;
+
+  /* move_len_streak */
+  g->moves_streak_len ++;
+  g->moves_streak_len *= !(p==PAWN || PBOARD(g,dest));
+
+  /* Castle */
+  if((ABS(delta) == 2) && (p == KING)){
+    pos_rook = dest / 8 + 7 * (delta/2 + 1)/2;
+    PBOARD(g,dest - delta/2) = PBOARD(g,pos_rook);
+    PBOARD(g,pos_rook) = EMPTY;
+    /* K e1->g1
+      4->6
+      h1->f1
+      7->5
+    */
+  }
+
+  /* castle kings */
+  if(p == KING){
+    g->castle_kings = SET_KING(g,c,dest);
+    g->castle_kings &= ~(3<<c);
+  }
+
+  if(p == ROOK && ((origin == 0 + (1-c)*56) || 
+        origin == 7 + (1-c)*56))
+    g->castle_kings &= ~(origin%8 == 0 ? 1<<c : 2<<c);
+
+  /* en passant */
+  /* direction = east or west */
+  /* reverted for black (because...)*/
+  
+  /* find f st :
+      f : +-9 -> 1
+          +-7 -> -1 
+     trivially, f(x)=ABS(x)-8
+   */
+  if(p == PAWN && EN_PASSANT(g,origin,ABS(delta)-8)){
+    /* dest +- 8 */
+    PBOARD(g, (delta > 0) ? dest - 8 : dest + 8) = EMPTY; 
+  }
+
+  /* real move */
+  PBOARD(g,dest) = PBOARD(g,origin);
+  PBOARD(g,origin) = EMPTY;
+
+  temp = MOVE_PROM(move);
+  if(temp)
+    PBOARD(g,dest) = temp + (c<<3);
+
+  return EXIT_SUCCESS;
 }
 
 int string_to_move(char* s, ushort *m){

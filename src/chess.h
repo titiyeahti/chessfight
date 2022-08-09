@@ -78,7 +78,7 @@ typedef struct game {
   uint moves_len, max_moves;
 
   /* Numbers of moves since last piece taken or pawn moded */
-  uint move_streak_len;
+  uint moves_streak_len;
 
   /* the two lower bits indicates if black castle is available 
      (first for left rook and second for right one)
@@ -143,8 +143,8 @@ typedef game_t* game_p;
 
 /* Given a game, a colour and coordinates, this will set the position of the 
    chosen king in g->castle_kings to (8i+j)*/ 
-#define SET_KING(g,c,i,j) \
-  ((COORD2INT(i,j) << ((c)*6+4)) | \
+#define SET_KING(g,c,pos) \
+  (((pos) << ((c)*6+4)) | \
    ((g)->castle_kings & (~(63 << ((c)*6+4)))))
 
 
@@ -200,7 +200,10 @@ int is_move_into_check(game_p g, ushort move);
 
 int is_move_legal(game_p g, ushort move);
 
-int possible_moves_pos(game_p g, uchar pos, ushort* dests); 
+int possible_moves_pos(game_p g, uchar pos, ushort* pmoves); 
+
+/* DO NOT CHECK MOVE LEGALITY */
+int move_do(game_p g, ushort move);
 
 /* 4 <= len <= 5 (carefull with null terminating character)
    check format ([a-h][1-8]){2}[prcbqk]{0,1}*/ 
