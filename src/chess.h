@@ -99,13 +99,19 @@ typedef game_t* game_p;
 /* tile t */
 #define PIECE(t) ((t) & 7)
 
-#define COLOUR(t) ((t) & 8)
+#define COLOUR(t) (((t) & 8)>>3)
 
 #define BOARD(g,i,j) (g)->board[COORD2INT(i,j)]
 
+#define PBOARD(g,pos) (g)->board[pos]
+
+#define PPIECE(g,pos) PIECE(PBOARD(g,pos))
+
+#define PCOLOUR(g,pos) COLOUR(PBOARD(g,pos))
+
 #define CPIECE(g,i,j) ((BOARD(g,i,j))&7)
 
-#define CCOLOUR(g,i,j) ((BOARD(g,i,j))&8)
+#define CCOLOUR(g,i,j) (((BOARD(g,i,j))&8)>>3)
 
 #define OPPONENT(c) ((c) ? BLACK : WHITE)
 
@@ -123,13 +129,24 @@ typedef game_t* game_p;
 
 #define MOVE_END(m) (((m)&(63<<6))>>6)
 
+#define DELTA_MOVE(m) (MOVE_END(m) - MOVE_START(m))
+
 #define MOVE_PROM(m) (((m)&(7<<13))>>13)
+
+#define EN_PASSANT(g,pos,d) \
+  ((ABS(DELTA_MOVE((g)->moves[(g)->moves_len-1])) \
+      == 16) \
+  && ((pos + (2*PCOLOUR(g,pos)-1)*(d)) \
+      == MOVE_END(g->moves[g->moves_len-1])) \
+  && (g->board[pos+(2*PCOLOUR(g,pos)-1)*(d)] \
+      == PAWN & ~(PCOLOUR(g,pos)<<3)))
 
 /* Given a game, a colour and coordinates, this will set the position of the 
    chosen king in g->castle_kings to (8i+j)*/ 
 #define SET_KING(g,c,i,j) \
   ((COORD2INT(i,j) << ((c)*6+4)) | \
    ((g)->castle_kings & (~(63 << ((c)*6+4)))))
+
 
 /* return a pointer to a fresh new game */
 game_p game_new(void);
@@ -164,7 +181,7 @@ int iter_knight(game_p g, COLOUR_t c, ITERMODE_t m, uchar pos, uchar* dests);
 int is_tile_threatened_as_colour(game_p g, 
     uchar pos, COLOUR_t c, uchar* threats);
 
-int is_color_in_check(game_p g, COLOUR_t c);
+int is_color_in_check(game_p g, COLOUR_t c, uchar* threats);
 
 int is_move_into_check(game_p g, ushort move);
 

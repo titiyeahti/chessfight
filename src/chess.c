@@ -163,8 +163,9 @@ int is_move_into_check(game_p g, ushort move){
 }
 
 int possible_moves_pos(game_p g, uchar pos, ushort* pmoves){
-  int count, nb_moves, i;
+  int count, nb_moves, i, flag;
   uchar dest, val;
+  ushort move;
   PIECE_t p;
   COLOUR_t c;
   COMPASS_t direc;
@@ -182,15 +183,72 @@ int possible_moves_pos(game_p g, uchar pos, ushort* pmoves){
 
     case PAWN:
       /* 1 step forward */
-      direc = (1-2*c)*NORTH;
       /* 2 steps forward if on starting pos */
+      direc = (2*c-1)*NORTH;
+      flag = pos + direc;
+      if(flag < 64 && flag > 0){
+        if(!g->board[flag]){
+          if(dests)
+            dests[count] = pos + direc;
+          
+          count ++;
+          
+          /* If pawn on starting pos and tile 2 steps ahead is empty */
+          if(pos>(47-40*c) && pos<(16-40*c) && !g->board[pos+2*direc]){
+            if(dests)
+              dests[count] = pos + 2*direc;
+            
+            count ++;
+          }
+        }
+      }
+
+
       /* strike diagonal forward + en passant*/
-      direc = (1-2*c)*NE;
-      direc = (1-2*c)*NW;
-      /* En passant (row 4(w) and 5(b) so 3 and 4 in our case)
-         and if there is an enemy pawn that arrived next to pos
-         last round*/
-      /* Promote : processed at the end of function */
+      direc = (2*c-1)*NE;
+      flag = pos + direc;
+      if(flag < 64 && flag > 0){
+        if(g->board[flag] && !(g->board[flag] & (c << 3))){
+          if(dests)
+            dests[count] = pos + direc;
+          
+          count ++;
+        }
+
+        /* Last move 2 tile north or south 
+           and arrives next to pos
+           and is an ennemy pawn
+         */
+        if(EN_PASSANT(g,pos,EAST)){
+          if(dests)
+            dests[count] = pos + direc;
+
+          count ++;
+        }
+      }
+
+      direc = (2*c-1)*NW;
+      flag = pos + direc;
+      if(flag < 64 && flag > 0){
+        if(g->board[flag] && !(g->board[flag] & (c << 3))){
+          if(dests)
+            dests[count] = pos + direc;
+          
+          count ++;
+        }
+
+        /* Last move 2 tile north or south 
+           and arrives next to pos
+           and is an ennemy pawn
+         */
+        if(EN_PASSANT(g,pos,WEST)){
+          if(dests)
+            dests[count] = pos + direc;
+
+          count ++;
+        }
+      }
+
       break;
 
     case ROOK:
@@ -227,22 +285,47 @@ int possible_moves_pos(game_p g, uchar pos, ushort* pmoves){
         dests = dests ? dests_array + count : NULL;
         count += iter_dir(g, c, HUNTER, compass_array[i], 1, pos, dests);
       }
-      /* TODO castle */
+
+      /* big castle (left) */
+      if((1<<(c*2)) & g->castle_kings){
+        if(g->board[pos-1] == EMPTY && g->board[pos-2] == EMPTY){
+          flag = 0;
+          for(i=0; i<3 && !flag; i++)
+            flag = is_tile_threatened_as_colour(g, pos-i, c, NULL) ? 1 : 0;
+
+          dests[count] = pos-2;
+          count ++;
+        }
+      }
+
+      /* little castle (right) */
+      if((2<<(c*2)) & g->castle_kings){
+        if(g->board[pos+1] == EMPTY && g->board[pos+2] == EMPTY){
+          flag = 0;
+          for(i=0; i<3 && !flag; i++)
+            flag = is_tile_threatened_as_colour(g, pos+i, c, NULL) ? 1 : 0;
+
+          dests[count] = pos+2;
+          count ++;
+        }
+      }
+
       break;
   }
 
+  /* Compute the moves from the destinations */
   nb_moves = 0;
   if(p == KING){
-  }
-  else{
-    if(p == PAWN){
-      /* PROMOTE : if reach last row add the 
-         4 possible promotion moves (qnrb)*/
-  }
+    for(i=0; i<count; i++){
+      if(!is_tile_threatened_as_colour(g, pos, c, NULL)){
+        if(pmoves)
+          pmoves[nb_moves] = pos + dests[i] << 6;
 
-  return count;
+        nb_moves ++;
+      }
+    }
+  }
 }
-
 
 int string_to_move(char* s, ushort *m){
   int len = strlen(s);
