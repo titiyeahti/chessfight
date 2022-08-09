@@ -32,6 +32,15 @@ game_p game_new(void){
   return res;
 }
 
+game_p game_copy(game_p g){
+  game_p res = malloc(sizeof(game_t));
+  memcpy(res, g, sizeof(game_t));
+  res->moves = malloc(sizeof(ushort)*res->max_moves);
+  memcpy(res->moves, g->moves, sizeof(ushort)*res->max_moves);
+
+  return res;
+}
+
 void game_free(game_p g){
   free(g->moves);
   free(g);
@@ -74,32 +83,113 @@ void game_print(game_p g){
   moves_print(g);
 }
 
-int iter_dir(game_p g, COLOUR_t c, ITERMODE_t m,
-    COMPASS_t comp, int max, uchar pos, uchar* dests){ 
-  int count=0;
-  int dest;
+int iter_dir(game_p g, COLOUR_t c, COMPASS_t comp, 
+    int max, uchar pos, uchar* dests){ 
+  int count, dest, i;
+  count = 0;
+  i=0;
   max = max ? max : 8;
-  for(dest=pos+comp; dest>0 && dest<64 && count<max; dest+=comp){
-    if(g->board[dest]){
-      /* If we are looking for the threat, there is only one value to 
-         return per direction*/ 
+  for(dest=pos+comp; dest>0 && dest<64 && i<max; dest+=comp){
+    if(!PBOARD(g, dest)){
       if(dest)
-        dests[m==PREY ? 0 : count] = dest;
+        dests[count] = dest;
 
       count++;
+    }
+    else {
+      if(PCOLOUR(g,dest) != c){
+        if(dest)
+          dests[count] = dest;
+
+        count++;
+      }
+
       break;
     }
-    
-    if(m == HUNTER && dests)
-      dests[count] = dest;
 
-    count ++;
+    i++;
   }
 
   return count;
 }
 
-int iter_knight(game_p g, COLOUR_t c, ITERMODE_t m, uchar pos, uchar* dests){
+int threats_dir(game_p g, COLOUR_t c, COMPASS_t comp, 
+    uchar pos, uchar* threats){
+  int count, i, ldv ;
+  COMPASS_t pawn_e, pawn_w;
+  PIECE_t p;
+  i=1;
+  ldv=1;
+  
+  /* iterrate from pos in the direction comp */
+  for(pos=pos+comp; pos<64 && pos>0; pos+=comp){
+    if(PCOLOUR(g,pos) == c)
+      ldv =-1;
+    else{
+      p = PPIECE(g,pos);
+      switch (p){
+        case KING :
+          if(i==1)
+            goto save_threat;
+
+        case PAWN :
+          pawn_w = (1-2*c)*NW;
+          pawn_e = (1-2*c)*NE;
+          /* do struff */
+          if(i==1 && (comp == pawn_e || comp == pawn_w))
+            goto save_threat;
+
+          break;
+        case ROOK:
+          if(!(comp%2) || (ABS(comp) < 2))
+            goto save_threat;
+
+          break;
+
+        case BISHOP:
+          if(comp%2 && (ABS(comp) > 2))
+            goto save_threat;
+
+          break;
+
+        case QUEEN:
+          goto save_threat;
+
+          break;
+      }
+
+save_threat:
+          if(threats)
+            threats[count] = pos;
+
+          count++;
+
+    }
+
+    /* increment i*/
+    i++;
+  }
+  return ldv*count;
+}
+
+int threats_knight(game_p g, COLOUR_t c, uchar pos, uchar* threats){
+  int count, i, dest;
+  for(i=0; i<8; i++){
+    dest = pos + knight_moves[i];
+    if(dest > 0 && dest < 64){
+      if(PBOARD(g, dest) == KNIGHT + (OPPONENT(c) << 3)){
+        if(threats)
+          threats[count] = dest;
+
+        count ++;
+      }
+    }
+  }
+
+  return count;
+}
+
+int iter_knight(game_p g, COLOUR_t c, uchar pos, uchar* dests){
   int count = 0;
   int i;
   int dest;
@@ -107,9 +197,8 @@ int iter_knight(game_p g, COLOUR_t c, ITERMODE_t m, uchar pos, uchar* dests){
     dest = pos + knight_moves[i];
     /* in the board */
     if(dest > 0 && dest < 64){
-      /* if it is an ennemy case OR we hunt and this is an empty case */
-      if((g->board[dest] && COLOUR(g->board[dest]) != c) 
-          || (!g->board[dest] && HUNTER)){
+      if((PBOARD(g,dest) && PCOLOUR(g,dest) != c) 
+          || (!PBOARD(g,dest))){
         if(dests)
           dests[count] = dest;
 
@@ -124,17 +213,16 @@ int iter_knight(game_p g, COLOUR_t c, ITERMODE_t m, uchar pos, uchar* dests){
 int is_tile_threatened_as_colour(game_p g, 
     uchar pos, COLOUR_t c, uchar* threats){
   uchar *current_threats = threats;
-  int count, i;
+  int count, i, temp;
   
-  /* Look for knights around*/
-  count += iter_knight(g, c, PREY, pos, current_threats);
+  /* Look for knights around */
+  count += threats_knight(g, c, pos, current_threats);
 
 
-  /* Look lines, columns or diags around the tile until 
-     obstacle or threat */
   for(i=0; i<8; i++){
     current_threats = current_threats ? threats + count : NULL;
-    count += iter_dir(g, c, PREY, compass_array[i], 0, pos, current_threats);
+    temp = threats_dir(g, c, compass_array[i], pos, current_threats);
+    count += temp > 0 ? temp : 0;
   }
 
   return count;
@@ -144,11 +232,15 @@ int is_color_in_check(game_p g, COLOUR_t c, uchar* threats){
   return is_tile_threatened_as_colour(g, KING_POS(g,c), c, threats);
 }
 
+
+/* TODO */
 int is_move_into_check(game_p g, ushort move){
   uchar origin = MOVE_START(move);
   uchar dest = MOVE_END(move);
+  COLOUR_t c = PCOLOUR(g,origin);
 
-
+  if( (origin%8 == KING_POS(g,c)%8) && origin%8 != dest%8)
+    return 0;
   /* Check if the move offers a line of sight on the king
      either strait or diagonal.
      If it is the case check if there is a chess
@@ -162,6 +254,27 @@ int is_move_into_check(game_p g, ushort move){
   return 0;
 }
 
+int is_move_legal(game_p g, ushort move){
+  uchar origin, dest, temp;
+  COLOUR_t c;
+  int res;
+
+  origin = MOVE_START(move);
+  dest = MOVE_END(move);
+  c = PCOLOUR(g, origin);
+  temp = PBOARD(g,dest);
+  PBOARD(g,dest) = PBOARD(g,origin);
+  PBOARD(g,origin) = EMPTY;
+
+  res = is_color_in_check(g, c, NULL);
+
+  PBOARD(g,origin) = PBOARD(g,dest);
+  PBOARD(g,dest) = temp;
+
+  return res;
+}
+
+
 int possible_moves_pos(game_p g, uchar pos, ushort* pmoves){
   int count, nb_moves, i, flag;
   uchar dest, val;
@@ -171,8 +284,8 @@ int possible_moves_pos(game_p g, uchar pos, ushort* pmoves){
   COMPASS_t direc;
   /* 3*7 + 6 maximum number of attacked case by a queen*/
   uchar dests_array[27];
-  uchar *dests = pmoves ? dests_array : NULL;
-  val = g->board[pos];
+  uchar *dests = dests_array;
+  val = PBOARD(g,pos);
   p = PIECE(val);
   c = COLOUR(val);
   
@@ -187,14 +300,14 @@ int possible_moves_pos(game_p g, uchar pos, ushort* pmoves){
       direc = (2*c-1)*NORTH;
       flag = pos + direc;
       if(flag < 64 && flag > 0){
-        if(!g->board[flag]){
+        if(!PBOARD(g,flag)){
           if(dests)
             dests[count] = pos + direc;
           
           count ++;
           
           /* If pawn on starting pos and tile 2 steps ahead is empty */
-          if(pos>(47-40*c) && pos<(16-40*c) && !g->board[pos+2*direc]){
+          if(pos>(47-40*c) && pos<(16-40*c) && !PBOARD(g,pos+2*direc)){
             if(dests)
               dests[count] = pos + 2*direc;
             
@@ -208,7 +321,7 @@ int possible_moves_pos(game_p g, uchar pos, ushort* pmoves){
       direc = (2*c-1)*NE;
       flag = pos + direc;
       if(flag < 64 && flag > 0){
-        if(g->board[flag] && !(g->board[flag] & (c << 3))){
+        if(PBOARD(g,flag) && !(PBOARD(g,flag) & (c << 3))){
           if(dests)
             dests[count] = pos + direc;
           
@@ -230,7 +343,7 @@ int possible_moves_pos(game_p g, uchar pos, ushort* pmoves){
       direc = (2*c-1)*NW;
       flag = pos + direc;
       if(flag < 64 && flag > 0){
-        if(g->board[flag] && !(g->board[flag] & (c << 3))){
+        if(PBOARD(g,flag) && !(PBOARD(g,flag) & (c << 3))){
           if(dests)
             dests[count] = pos + direc;
           
@@ -253,28 +366,28 @@ int possible_moves_pos(game_p g, uchar pos, ushort* pmoves){
 
     case ROOK:
       for(i=0; i<4; i++){
-        dests = dests ? dests_array + count : NULL;
-        count += iter_dir(g, c, HUNTER, compass_array[i], 0, pos, dests);
+        dests += count;
+        count += iter_dir(g, c, compass_array[i], 0, pos, dests);
       }
 
       break;
 
     case KNIGHT:
-      count += iter_knight(g, c, HUNTER, pos, dests);
+      count = iter_knight(g, c, pos, dests);
       break;
 
     case BISHOP:
       for(i=4; i<8; i++){
-        dests = dests ? dests_array + count : NULL;
-        count += iter_dir(g, c, HUNTER, compass_array[i], 0, pos, dests);
+        dests = dests_array + count;
+        count += iter_dir(g, c, compass_array[i], 0, pos, dests);
       }
 
       break;
 
     case QUEEN:
       for(i=0; i<8; i++){
-        dests = dests ? dests_array + count : NULL;
-        count += iter_dir(g, c, HUNTER, compass_array[i], 0, pos, dests);
+        dests = dests_array + count;
+        count += iter_dir(g, c, compass_array[i], 0, pos, dests);
       }
 
       break;
@@ -282,13 +395,13 @@ int possible_moves_pos(game_p g, uchar pos, ushort* pmoves){
     case KING:
       /* one step every direction */
       for(i=0; i<8; i++){
-        dests = dests ? dests_array + count : NULL;
-        count += iter_dir(g, c, HUNTER, compass_array[i], 1, pos, dests);
+        dests = dests_array + count;
+        count += iter_dir(g, c, compass_array[i], 1, pos, dests);
       }
 
-      /* big castle (left) */
-      if((1<<(c*2)) & g->castle_kings){
-        if(g->board[pos-1] == EMPTY && g->board[pos-2] == EMPTY){
+      /* long castle (left) */
+      if(LEGAL_CASTLE(g,c,1)){
+        if(PBOARD(g,pos-1) == EMPTY && PBOARD(g,pos-2) == EMPTY){
           flag = 0;
           for(i=0; i<3 && !flag; i++)
             flag = is_tile_threatened_as_colour(g, pos-i, c, NULL) ? 1 : 0;
@@ -298,9 +411,9 @@ int possible_moves_pos(game_p g, uchar pos, ushort* pmoves){
         }
       }
 
-      /* little castle (right) */
-      if((2<<(c*2)) & g->castle_kings){
-        if(g->board[pos+1] == EMPTY && g->board[pos+2] == EMPTY){
+      /* short castle (right) */
+      if(LEGAL_CASTLE(g,c,2)){
+        if(PBOARD(g,pos+1) == EMPTY && PBOARD(g,pos+2) == EMPTY){
           flag = 0;
           for(i=0; i<3 && !flag; i++)
             flag = is_tile_threatened_as_colour(g, pos+i, c, NULL) ? 1 : 0;
@@ -317,7 +430,7 @@ int possible_moves_pos(game_p g, uchar pos, ushort* pmoves){
   nb_moves = 0;
   if(p == KING){
     for(i=0; i<count; i++){
-      if(!is_tile_threatened_as_colour(g, pos, c, NULL)){
+      if(!is_tile_threatened_as_colour(g, dests[i], c, NULL)){
         if(pmoves)
           pmoves[nb_moves] = pos + dests[i] << 6;
 
@@ -325,6 +438,29 @@ int possible_moves_pos(game_p g, uchar pos, ushort* pmoves){
       }
     }
   }
+  else{
+    for(i=0; i<count; i++){
+      move = pos + (dests[i] << 6);
+      if(is_move_legal(g, move)){
+        if(p == PAWN && (dests[i]/8 == 0 || dests[i]/8 == 7)){
+          for(val=ROOK; val<KING; val++){
+            if(pmoves)
+              pmoves[nb_moves] = move + (val<<13);
+
+            nb_moves ++;
+          }
+        }
+        else{
+          if(pmoves)
+            pmoves[nb_moves] = move;
+
+          nb_moves ++;
+        }
+      }
+    }
+  }
+
+  return nb_moves; 
 }
 
 int string_to_move(char* s, ushort *m){
@@ -384,3 +520,4 @@ void move_to_string(ushort m, char* res){
     res[4] = '\0';
   }
 }
+

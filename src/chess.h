@@ -30,10 +30,6 @@ typedef enum compass {
   NE = 9, NW = 7, SE = -7, SW = -9
 } COMPASS_t;
 
-typedef enum iter_mode{
-  HUNTER, PREY
-} ITERMODE_t;
-
 #define MAX_MOVES 64
 
 /* This const string will be used to convert pieces to char.
@@ -125,6 +121,10 @@ typedef game_t* game_p;
    the c king in g */
 #define KING_POS(g,c) ((g)->castle_kings & (63 << ((c)*6+4)))
 
+/* if side == 1 check the long castle
+   if side == 2 check the short castle */
+#define LEGAL_CASTLE(g,c,side) (((side)<<((c)*2)) & (g)->castle_kings)
+
 #define MOVE_START(m) ((m)&63)
 
 #define MOVE_END(m) (((m)&(63<<6))>>6)
@@ -137,8 +137,8 @@ typedef game_t* game_p;
   ((ABS(DELTA_MOVE((g)->moves[(g)->moves_len-1])) \
       == 16) \
   && ((pos + (2*PCOLOUR(g,pos)-1)*(d)) \
-      == MOVE_END(g->moves[g->moves_len-1])) \
-  && (g->board[pos+(2*PCOLOUR(g,pos)-1)*(d)] \
+      == MOVE_END((g)->moves[(g)->moves_len-1])) \
+  && (PBOARD(g,pos+(2*PCOLOUR(g,pos)-1)*(d)) \
       == PAWN & ~(PCOLOUR(g,pos)<<3)))
 
 /* Given a game, a colour and coordinates, this will set the position of the 
@@ -150,6 +150,8 @@ typedef game_t* game_p;
 
 /* return a pointer to a fresh new game */
 game_p game_new(void);
+
+game_p game_copy(game_p g);
 
 void game_free(game_p g);
 
@@ -173,10 +175,21 @@ void game_print(game_p g);
 
   TODO : comment better
  */
-int iter_dir(game_p g, COLOUR_t c, ITERMODE_t m,
-    COMPASS_t comp, int max, uchar pos, uchar* dests); 
+/* TODO Suppres the mode arg and split the function in iter_dir & threats_dir */
 
-int iter_knight(game_p g, COLOUR_t c, ITERMODE_t m, uchar pos, uchar* dests);
+int iter_dir(game_p g, COLOUR_t c, COMPASS_t comp, 
+    int max, uchar pos, uchar* dests); 
+
+/* Return the number of threats from the specified direction comp
+   if the theats are indirect (line of sight blocked)
+   the function return the opposite of this number.
+ */
+int threats_dir(game_p g, COLOUR_t c, COMPASS_t comp, 
+    uchar pos, uchar* threats);
+
+int iter_knight(game_p g, COLOUR_t c, uchar pos, uchar* dests);
+
+int threats_knight(game_p g, COLOUR_t c, uchar pos, uchar* threats);
 
 int is_tile_threatened_as_colour(game_p g, 
     uchar pos, COLOUR_t c, uchar* threats);
@@ -184,6 +197,8 @@ int is_tile_threatened_as_colour(game_p g,
 int is_color_in_check(game_p g, COLOUR_t c, uchar* threats);
 
 int is_move_into_check(game_p g, ushort move);
+
+int is_move_legal(game_p g, ushort move);
 
 int possible_moves_pos(game_p g, uchar pos, ushort* dests); 
 
