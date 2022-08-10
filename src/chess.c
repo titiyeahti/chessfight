@@ -120,11 +120,16 @@ int threats_dir(game_p g, COLOUR_t c, COMPASS_t comp,
   PIECE_t p;
   i=1;
   ldv=1;
+  count=0;
   
   /* iterrate from pos in the direction comp */
   for(pos=pos+comp; pos<64 && pos>0; pos+=comp){
-    if(PCOLOUR(g,pos) == c)
+    /* if no direct threats are detected we look for the inderect ones*/
+    if(PCOLOUR(g,pos) == c){
+      if(count)
+        break;
       ldv =-1;
+    }
     else{
       p = PPIECE(g,pos);
       switch (p){
@@ -133,6 +138,9 @@ int threats_dir(game_p g, COLOUR_t c, COMPASS_t comp,
             goto save_threat;
 
         case PAWN :
+          /* A black pawn menaces from north 
+             and a white one menaces from south
+           */
           pawn_w = (1-2*c)*NW;
           pawn_e = (1-2*c)*NE;
           /* do struff */
@@ -210,14 +218,12 @@ int iter_knight(game_p g, COLOUR_t c, uchar pos, uchar* dests){
   return count;
 }
 
-int is_tile_threatened_as_colour(game_p g, 
-    uchar pos, COLOUR_t c, uchar* threats){
+int is_tile_threatened(game_p g, COLOUR_t c, uchar pos, uchar* threats){
   uchar *current_threats = threats;
   int count, i, temp;
   
   /* Look for knights around */
-  count += threats_knight(g, c, pos, current_threats);
-
+  count = threats_knight(g, c, pos, current_threats);
 
   for(i=0; i<8; i++){
     current_threats = current_threats ? threats + count : NULL;
@@ -229,16 +235,18 @@ int is_tile_threatened_as_colour(game_p g,
 }
 
 int is_color_in_check(game_p g, COLOUR_t c, uchar* threats){
-  return is_tile_threatened_as_colour(g, KING_POS(g,c), c, threats);
+  return is_tile_threatened(g, c, KING_POS(g,c), threats);
 }
 
-/* TODO */
+/* TODO 
+   Not used at the moment, the implementation is under progress
+ */
 int is_move_into_check(game_p g, ushort move){
   uchar origin = MOVE_START(move);
   uchar dest = MOVE_END(move);
   COLOUR_t c = PCOLOUR(g,origin);
 
-  if( (origin%8 == KING_POS(g,c)%8) && origin%8 != dest%8)
+  if((origin%8 == KING_POS(g,c)%8) && origin%8 != dest%8)
     return 0;
   /* Check if the move offers a line of sight on the king
      either strait or diagonal.
@@ -276,7 +284,7 @@ int is_move_legal(game_p g, ushort move){
 /* the design of this function is flawless*/
 int possible_moves_pos(game_p g, uchar pos, ushort* pmoves){
   int count, nb_moves, i, flag;
-  uchar dest, val;
+  uchar dest, val, me;
   ushort move;
   PIECE_t p;
   COLOUR_t c;
@@ -296,6 +304,7 @@ int possible_moves_pos(game_p g, uchar pos, ushort* pmoves){
     case PAWN:
       /* 1 step forward */
       /* 2 steps forward if on starting pos */
+      /* Macro derection or opposite if black*/
       direc = (2*c-1)*NORTH;
       flag = pos + direc;
       if(flag < 64 && flag > 0){
@@ -315,7 +324,6 @@ int possible_moves_pos(game_p g, uchar pos, ushort* pmoves){
         }
       }
 
-
       /* strike diagonal forward + en passant*/
       direc = (2*c-1)*NE;
       flag = pos + direc;
@@ -331,7 +339,7 @@ int possible_moves_pos(game_p g, uchar pos, ushort* pmoves){
            and arrives next to pos
            and is an ennemy pawn
          */
-        if(EN_PASSANT(g,pos,EAST)){
+        if(EN_PASSANT(g,pos,EAST,me)){
           if(dests)
             dests[count] = pos + direc;
 
@@ -353,7 +361,7 @@ int possible_moves_pos(game_p g, uchar pos, ushort* pmoves){
            and arrives next to pos
            and is an ennemy pawn
          */
-        if(EN_PASSANT(g,pos,WEST)){
+        if(EN_PASSANT(g,pos,WEST,me)){
           if(dests)
             dests[count] = pos + direc;
 
@@ -403,7 +411,7 @@ int possible_moves_pos(game_p g, uchar pos, ushort* pmoves){
         if(PBOARD(g,pos-1) == EMPTY && PBOARD(g,pos-2) == EMPTY){
           flag = 0;
           for(i=0; i<3 && !flag; i++)
-            flag = is_tile_threatened_as_colour(g, pos-i, c, NULL) ? 1 : 0;
+            flag = is_tile_threatened(g, c, pos-i, NULL) ? 1 : 0;
 
           dests[count] = pos-2;
           count ++;
@@ -415,7 +423,7 @@ int possible_moves_pos(game_p g, uchar pos, ushort* pmoves){
         if(PBOARD(g,pos+1) == EMPTY && PBOARD(g,pos+2) == EMPTY){
           flag = 0;
           for(i=0; i<3 && !flag; i++)
-            flag = is_tile_threatened_as_colour(g, pos+i, c, NULL) ? 1 : 0;
+            flag = is_tile_threatened(g, c, pos+i, NULL) ? 1 : 0;
 
           dests[count] = pos+2;
           count ++;
@@ -429,7 +437,7 @@ int possible_moves_pos(game_p g, uchar pos, ushort* pmoves){
   nb_moves = 0;
   if(p == KING){
     for(i=0; i<count; i++){
-      if(!is_tile_threatened_as_colour(g, dests[i], c, NULL)){
+      if(!is_tile_threatened(g, c, dests[i], NULL)){
         if(pmoves)
           pmoves[nb_moves] = pos + dests[i] << 6;
 
@@ -463,16 +471,7 @@ int possible_moves_pos(game_p g, uchar pos, ushort* pmoves){
 }
 
 int move_do(game_p g, ushort move){
-  /* check if castle 
-      move king and rook
-      + update castle_kings
-     rook update castle king
-     upromotes
-     en passant 
-     update move len, move_streak_len 
-   */
-  int dest, origin, delta, pos_rook;
-  uchar temp;
+  uchar temp, me;
   PIECE_t p;
   COLOUR_t c;
   COMPASS_t comp;
@@ -526,8 +525,9 @@ int move_do(game_p g, ushort move){
           +-7 -> -1 
      trivially, f(x)=ABS(x)-8
    */
-  if(p == PAWN && EN_PASSANT(g,origin,ABS(delta)-8)){
+  if(p == PAWN && EN_PASSANT(g,origin,ABS(delta)-8,me)){
     /* dest +- 8 */
+
     PBOARD(g, (delta > 0) ? dest - 8 : dest + 8) = EMPTY; 
   }
 

@@ -79,20 +79,20 @@ int main(int argc, char* argv[]){
       if(!fgets(buffer, 1024, stdin))
         continue;
 
-      len = strlen(buffer)-1;
-      buffer[len] = '\0';
+      len = strlen(buffer);
+      printf("last character \"%c\"", buffer[len-1]);
 
       if(write(p1[1], buffer, len) < 0)
         return EXIT_FAILURE;
 
-      if(!strcmp(buffer, "exit"))
+      if(!strcmp(buffer, "exit\n"))
         break;
 
       if((len = read(p2[0], buffer, 1024)) < 0)
         return EXIT_FAILURE;
 
       buffer[len] = '\0';
-      printf("Response : %s\n", buffer);
+      printf("Response : %s", buffer);
     }
 
     /*awaiting for the child to end*/
