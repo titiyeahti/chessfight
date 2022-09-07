@@ -25,6 +25,8 @@ game_p game_new(void){
   res->max_moves = MAX_MOVES;
   res->moves_streak_len = 0;
 
+  res->captures_len = 0;
+
   res->castle_kings = 60 << 4;
   res->castle_kings += 4 << 10;
   res->castle_kings += 7;
@@ -281,7 +283,7 @@ int is_move_legal(game_p g, ushort move){
   return res;
 }
 
-/* the design of this function is flawless*/
+/* WARNING the design of this function is flawless*/
 int possible_moves_pos(game_p g, uchar pos, ushort* pmoves){
   int count, nb_moves, i, flag;
   uchar dest, val, me;
@@ -309,15 +311,13 @@ int possible_moves_pos(game_p g, uchar pos, ushort* pmoves){
       flag = pos + direc;
       if(flag < 64 && flag > 0){
         if(!PBOARD(g,flag)){
-          if(dests)
-            dests[count] = pos + direc;
+          dests[count] = pos + direc;
           
           count ++;
           
           /* If pawn on starting pos and tile 2 steps ahead is empty */
           if(pos>(47-40*c) && pos<(16-40*c) && !PBOARD(g,pos+2*direc)){
-            if(dests)
-              dests[count] = pos + 2*direc;
+            dests[count] = pos + 2*direc;
             
             count ++;
           }
@@ -329,8 +329,7 @@ int possible_moves_pos(game_p g, uchar pos, ushort* pmoves){
       flag = pos + direc;
       if(flag < 64 && flag > 0){
         if(PBOARD(g,flag) && !(PBOARD(g,flag) & (c << 3))){
-          if(dests)
-            dests[count] = pos + direc;
+          dests[count] = pos + direc;
           
           count ++;
         }
@@ -340,8 +339,7 @@ int possible_moves_pos(game_p g, uchar pos, ushort* pmoves){
            and is an ennemy pawn
          */
         if(EN_PASSANT(g,pos,EAST,me)){
-          if(dests)
-            dests[count] = pos + direc;
+          dests[count] = pos + direc;
 
           count ++;
         }
@@ -351,8 +349,7 @@ int possible_moves_pos(game_p g, uchar pos, ushort* pmoves){
       flag = pos + direc;
       if(flag < 64 && flag > 0){
         if(PBOARD(g,flag) && !(PBOARD(g,flag) & (c << 3))){
-          if(dests)
-            dests[count] = pos + direc;
+          dests[count] = pos + direc;
           
           count ++;
         }
@@ -362,8 +359,7 @@ int possible_moves_pos(game_p g, uchar pos, ushort* pmoves){
            and is an ennemy pawn
          */
         if(EN_PASSANT(g,pos,WEST,me)){
-          if(dests)
-            dests[count] = pos + direc;
+          dests[count] = pos + direc;
 
           count ++;
         }
@@ -470,33 +466,37 @@ int possible_moves_pos(game_p g, uchar pos, ushort* pmoves){
   return nb_moves; 
 }
 
+int possible_moves_colour(game_p g, COLOUR_t c, ushort* pmoves){
+  int pos, count;
+  COLOUR_t col;
+  for(pos=0; pos<64; pos++){
+    if(PBOARD(g,pos) && PCOLOUR(g,pos))
+      count += possible_moves_pos(g, pos, pmoves);
+  }
+
+  return count;
+}
+
+/* WARNING */
 int move_do(game_p g, ushort move){
-  uchar temp, me;
+  uchar temp, me, pos_rook;
   PIECE_t p;
   COLOUR_t c;
   COMPASS_t comp;
-  origin = MOVE_START(move);
-  dest = MOVE_END(move);
+  uchar origin = MOVE_START(move);
+  uchar dest = MOVE_END(move);
+  char delta;
 
   c = PCOLOUR(g,origin);
   p = PPIECE(g,origin);
   delta = dest - origin;
 
-  if(g->moves_len == g->max_moves){
-    g->max_moves += MAX_MOVES;
-    g->moves = realloc(g->moves, g->max_moves * sizeof(ushort));
-  }
-
-  g->moves[g->moves_len] = move; 
-  g->moves_len ++;
-
-  /* move_len_streak */
-  g->moves_streak_len ++;
-  g->moves_streak_len *= !(p==PAWN || PBOARD(g,dest));
-
   /* Castle */
   if((ABS(delta) == 2) && (p == KING)){
-    pos_rook = dest / 8 + 7 * (delta/2 + 1)/2;
+    /* rook and king move in opposite directions
+       rook pos during castle is either 1 or 8
+     */
+    pos_rook = 56*(1-c) + 7 * (delta/2 + 1)/2;
     PBOARD(g,dest - delta/2) = PBOARD(g,pos_rook);
     PBOARD(g,pos_rook) = EMPTY;
     /* K e1->g1
@@ -528,7 +528,18 @@ int move_do(game_p g, ushort move){
   if(p == PAWN && EN_PASSANT(g,origin,ABS(delta)-8,me)){
     /* dest +- 8 */
 
+    /* Capture */
     PBOARD(g, (delta > 0) ? dest - 8 : dest + 8) = EMPTY; 
+    g->captures[g->captures_len*2] = PAWN + OPPONENT(c)<<3;
+    g->captures[g->captures_len*2+1] = g->moves_len;
+    g->captures_len++;
+  }
+  
+  /* Capture */
+  if(PBOARD(g,dest)){
+    g->captures[g->captures_len*2] = PBOARD(g,dest);
+    g->captures[g->captures_len*2+1] = g->moves_len;
+    g->captures_len++;
   }
 
   /* real move */
@@ -538,6 +549,18 @@ int move_do(game_p g, ushort move){
   temp = MOVE_PROM(move);
   if(temp)
     PBOARD(g,dest) = temp + (c<<3);
+  
+  if(g->moves_len == g->max_moves){
+    g->max_moves += MAX_MOVES;
+    g->moves = realloc(g->moves, g->max_moves * sizeof(ushort));
+  }
+
+  g->moves[g->moves_len] = move; 
+  g->moves_len ++;
+
+  /* move_len_streak */
+  g->moves_streak_len ++;
+  g->moves_streak_len *= !(p==PAWN || PBOARD(g,dest));
 
   return EXIT_SUCCESS;
 }

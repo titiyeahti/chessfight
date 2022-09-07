@@ -12,6 +12,7 @@
 /* BASIC DEFINITIONS */
 
 #define ABS(i) ((i) < 0 ? -(i) : (i))
+#define MAX(a,b) ((a)>(b) ? (a) : (b))
 #define MAX_MOVES 64
 
 typedef unsigned int uint;
@@ -48,7 +49,7 @@ static const int knight_moves[] = {
   -2*8 + 1, -2*8 - 1, -2*1 + 8, -2*1 - 8
 };
 
-static const char pieces_string[] = " prnbqkPRNBQK";
+static const char pieces_string[] = ".prnbqkPRNBQK";
 
 static const COMPASS_t compass_array[8] = {
   NORTH, SOUTH, EAST, WEST, NE, SE, NW, SW
@@ -74,9 +75,14 @@ typedef struct game {
      And the 3 upper bits indicates the wanted piece in case of promotion.*/
   ushort* moves;
 
+  /* captures[2*i] = piece+colour<<3 
+     captures[2*i+1] = #move of the capture
+   */
+  uchar captures[64];
+
   /* Number of played moves
      Allocated memory for moves */
-  uint moves_len, max_moves;
+  uint moves_len, max_moves, captures_len;
 
   /* Numbers of moves since last piece taken or pawn moded */
   uint moves_streak_len;
@@ -99,6 +105,8 @@ typedef game_t* game_p;
 #define COLOUR(t) (((t) & 8)>>3)
 
 /* BOARD */
+#define ITER_BOARD(g,cur) for(cur=g->board; cur < g->board + 64; cur++)
+
 #define BOARD(g,i,j) (g)->board[COORD2INT(i,j)]
 
 #define CPIECE(g,i,j) ((BOARD(g,i,j))&7)
@@ -151,10 +159,10 @@ typedef game_t* game_p;
    Depending on the colour and direction, did the move arrived next to pos
    */
 #define EN_PASSANT(g,pos,d,me) \
-  me = MOVE_END(LAST_MOVE(g)) && \
+  (me = MOVE_END(LAST_MOVE(g)) && \
   (PIECE(me) == PAWN) \
-  && ((ABS(me - MOVE_START(LAST_MOVE(p)))) == 16) \
-  && ((pos + (2*PCOLOUR(g,pos)-1)*(d)) == me)
+  && ((ABS(me - MOVE_START(LAST_MOVE(g)))) == 16) \
+  && ((pos + (2*PCOLOUR(g,pos)-1)*(d)) == me))
 
 
 /*!
@@ -268,6 +276,8 @@ int is_move_into_check(game_p g, ushort move);
 int is_move_legal(game_p g, ushort move);
 
 int possible_moves_pos(game_p g, uchar pos, ushort* pmoves); 
+
+int possible_moves_colour(game_p g, COLOUR_t c, ushort* pmoves);
 
 /* DO NOT CHECK MOVE LEGALITY */
 int move_do(game_p g, ushort move);
