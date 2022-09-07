@@ -8,6 +8,9 @@
   * Uniformize error managment (errno.h + macro in utils.h)
   */
 
+
+/* SERVER */
+
 int connexion_init(const char* port){
   int sock, s;
   struct addrinfo hints = {0}, *results, *rp;
@@ -55,90 +58,11 @@ int connexion_init(const char* port){
   return sock;
 }
 
-player_p player_new(void){
-  player_p ret = malloc(sizeof(player_t));
-  ret->socket = -1;
-  ret->index = -1;
-  ret->username[0] = '\0';
-  ret->m = NULL;
-
-  return ret;
-}
-
-int player_queue_up(serv_p server, player_p p){
-  int temp;
-  player_p *cur;
-  for(cur = server->players; cur < server->nb_players + MAX_PLAYERS; cur++){
-    if(!(*cur)->g){
-      if((*cur)->index != p->index){
-        server->players[(*cur)->index] = p;
-        server->players[p->index] = (*cur);
-        temp = (*cur)->index;
-        (*cur)->index = p->index;
-        p->index = temp;
-      }
-
-      break;
-    }
-  }
-}
-
-int player_connect(serv_p server){
-  struct sockaddr_in paddr = {0};
-  size_t addrlen = sizeof(paddr);
-  player_p p;
-  int sock, index;
-
-  if(server->nb_players >= MAX_PLAYERS){
-    fprintf(stderr, "player connect, server is full\n");
-    return -1;
-  }
-
-  if((sock = accept(server->socket, &paddr, &psize)) < 0){
-    fprintf(stderr, "player_connect\n");
-    return -1;
-  }
-
-  p = player_new();
-  p->socket = sock;
-  p->index = nb_players;
-
-  server->max_fd = max(server->max_fd, sock);
-  server->players[server->nb_players] = p;
-  server->nb_players ++;
-
-  index = player_queue_up(server, p);
-}
-
-void player_free(player_p p){
-  close(p->socket);
-  free(p);
-  p = NULL;
-}
-
-int player_disconnect(serv_p serveur, player_p p){
-  /*TODO
-   match = p->m
-   index = p->index
-   free(p) // frippé lol
-   nb_players--
-   if(!nb_players)
-     return success
-
-   players[index] = players[nb_players];
-   players[nb_players] = NULL;
-
-   if match
-     match_end(match_p m, OUTCOME_t out);
-     (end the match, i.e. queue_up opponent, send message to opponent)
-   */
-}
-
-serv_p serv_new(port){
+serv_p serv_new(const char* port){
   int sock;
   serv_p ret;
 
-  if((sock = connectio_init(port)) < 0){
+  if((sock = connexion_init(port)) < 0){
     fprintf(stderr, "serv_new\n");
     return NULL;
   }
@@ -156,7 +80,7 @@ void serv_free(serv_p server){
   int i;
   for(i=0; i<server->nb_players; i++){
     player_free(server->players[i]);
-    server_players[i] = NULL;
+    server->players[i] = NULL;
   }
 
   for(i=0; i<server->nb_matchs; i++){
@@ -165,13 +89,143 @@ void serv_free(serv_p server){
   }
 
   close(server->socket);
+
+  free(server);
 }
 
-client_p client_new(char* name);
+/* PLAYER */
 
-int match_start(serv_p server, player_p p1, player_p p2);
+player_p player_new(void){
+  player_p ret = malloc(sizeof(player_t));
+  ret->socket = -1;
+  ret->index = -1;
+  ret->username[0] = '\0';
+  ret->m = NULL;
+
+  return ret;
+}
+
+void player_free(player_p p){
+  close(p->socket);
+  free(p);
+}
+
+int player_queue_up(serv_p server, player_p p){
+  int temp;
+  player_p *cur;
+  for(cur = server->players; cur < server->players + MAX_PLAYERS; cur++){
+    if((*cur)->m){
+      server->players[(*cur)->index] = p;
+      server->players[p->index] = (*cur);
+      temp = (*cur)->index;
+      (*cur)->index = p->index;
+      p->index = temp;
+
+      return temp; 
+    }
+  }
+
+  return p->index;
+}
+
+int player_connect(serv_p server){
+  struct sockaddr_in paddr = {0};
+  socklen_t addrlen = sizeof(paddr);
+  player_p p;
+  int sock, index;
+
+  if(server->nb_players >= MAX_PLAYERS){
+    fprintf(stderr, "player connect, server is full\n");
+    return -1;
+  }
+
+  if((sock = accept(server->socket, 
+          (struct sockaddr *) &paddr, &addrlen)) < 0){
+    fprintf(stderr, "player_connect\n");
+    return -1;
+  }
+
+  p = player_new();
+  p->socket = sock;
+  p->index = server->nb_players;
+
+  server->max_fd = MAX(server->max_fd, sock);
+  server->players[server->nb_players] = p;
+  server->nb_players ++;
+
+  index = player_queue_up(server, p);
+
+  return index;
+}
+
+int player_disconnect(serv_p serveur, player_p p){
+  match_p m = p->m;
+  int index = p->index;
+  server->nb_players --;
+  if(!nb_players) return 0;
+
+  server->players[index] = server->players[nb_players];
+  server->players[nb_players] = NULL;
+
+  if(m){
+    match->players[(p == match->players[1])] = NULL;
+    match_end(m, OPPO_LEFT);
+  }
+
+  player_free(p);
+}
+
+/* MATCH */
+
+match_p match_new(void){
+  match_p ret;
+  ret = malloc(sizeof(match_t));
+  ret->players[0] = NULL;
+  ret->players[1] = NULL;
+  ret->timers[0] = 0;
+  ret->timers[1] = 0;
+  ret->current_player = -1;
+  ret->g = game_new();
+  return ret;
+}
+
+void match_free(match_p m){
+  game_free(m->g);
+  m->g = NULL;
+  free(m);
+}
+
+int match_start(serv_p server, player_p p1, player_p p2){
+  /* match creation */
+  match_p m = match_new();
+  m->players[0] = p1;
+  m->players[1] = p2;
+  m->current_player = WHITE;
+
+  /* add to match queue */
+  server->matchs[server->nb_matchs] = m;
+  
+  /* send message to both players */
+}
 
 /*    Pop the match,
     put the two player at the right position in the queue (players), 
     send the recap to players*/
 int match_end(serv_p server, match_p m);
+
+/* MESSAGES */
+ssize_t message_read(int sock, void* buffer, size_t bufsize){
+  ssize_t bytes;
+  if((bytes = read(sock, buffer, bufsize)) < 1){
+    fprintf(stderr, "message_read\n");
+    bytes = 0;
+  }
+
+  return bytes;
+}
+
+
+
+int message_write(int sock, char* buffer){
+
+}
