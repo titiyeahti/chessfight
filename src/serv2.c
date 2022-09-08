@@ -130,6 +130,8 @@ int player_queue_up(serv_p server, player_p p){
 
 int player_connect(serv_p server){
   struct sockaddr_in paddr = {0};
+  MSGTYPE_t msgt;
+  ssize_t bytes;
   socklen_t addrlen = sizeof(paddr);
   player_p p;
   int sock, index;
@@ -149,6 +151,24 @@ int player_connect(serv_p server){
   p->socket = sock;
   p->index = server->nb_players;
 
+  /* read the code */
+  if((bytes = read(sock, &msgt, 1)) < 1){
+    player_free(p);
+    return -1;
+  }
+
+  if(msgt != m_IDENTITY){
+    player_free(p);
+    return -1;
+  }
+
+  if((bytes = read(sock, p->username, MAX_NAME_LENGTH - 1)) < 0){
+    player_free(p);
+    return -1;
+  }
+
+  p->username[bytes] = '\0';
+
   server->max_fd = MAX(server->max_fd, sock);
   server->players[server->nb_players] = p;
   server->nb_players ++;
@@ -158,7 +178,7 @@ int player_connect(serv_p server){
   return index;
 }
 
-int player_disconnect(serv_p serveur, player_p p){
+int player_disconnect(serv_p serveur, player_p p, char* buffer){
   match_p m = p->m;
   int index = p->index;
   server->nb_players --;
@@ -169,7 +189,7 @@ int player_disconnect(serv_p serveur, player_p p){
 
   if(m){
     match->players[(p == match->players[1])] = NULL;
-    match_end(m, OPPO_LEFT);
+    match_end(server, m, OPPO_LEFT, buffer);
   }
 
   player_free(p);
@@ -196,6 +216,8 @@ void match_free(match_p m){
 }
 
 int match_start(serv_p server, player_p p1, player_p p2){
+  char buffer[2];
+  ssize_t bytes;
   /* match creation */
   match_p m = match_new();
   m->players[0] = p1;
@@ -203,15 +225,78 @@ int match_start(serv_p server, player_p p1, player_p p2){
   m->current_player = WHITE;
 
   /* add to match queue */
+  m->index = server->nb_matchs;
   server->matchs[server->nb_matchs] = m;
+  server->nb_matchs ++;
+
+  buffer[0] = m_START;
+
+  buffer[1] = WHITE;
+  bytes = write(p2->socket, buffer, 2);
+  if(bytes < 2){
+    match_free(m);
+    return -1;
+  }
   
-  /* send message to both players */
+  buffer[1] = BLACK;
+  bytes = write(p1->socket, buffer, 2);
+  if(bytes < 2){
+    match_free(m);
+    return -1;
+  }
+
+  return server->nb_matchs;
 }
 
-/*    Pop the match,
-    put the two player at the right position in the queue (players), 
-    send the recap to players*/
-int match_end(serv_p server, match_p m);
+int match_end(serv_p server, match_p m, OUTCOME_t out, char* buffer){
+  ssize_t bytes, offset;
+  int i;
+  player_p* p;
+
+  for(p = m->players; p < m->players + 2; p++){
+    if(!(*p)) 
+      continue;
+
+    /*write outcome*/
+    buffer[0] = m_END;
+    buffer[1] = out;
+    if((bytes = writes(*p->socket, buffer, 2)) < 2){
+      fprintf(stderr, "match_end outcome\n");
+    }
+
+    /*write recap*/
+    buffer[0] = m_RECAP;
+    offset = 1;
+    
+    memcpy(buffer + offset, m->timers, sizeof(m->timers));
+    offset += sizeof(m->timers);
+
+    memcpy(buffer + offset, m->g->moves, m->g->moves_len);
+    offset += sizeof(ushort)*m->g->moves_len;
+
+    if((bytes = writes(*p->socket, buffer, offset)) < 1){
+      fprintf(stderr, "match_end oppoleft recap\n");
+    }
+
+    (*p)->g = NULL;
+    i = player_queue_up(server, *p);
+  }
+
+  /* Decrease number of matchs 
+     Move last match to m place
+     Update index of the moved match
+     Delete the old reference
+   */
+
+  server->nb_matchs --;
+  server->matchs[m->index] = server->matchs[server->nb_matchs];
+  server->matchs[m->index]->index = m->index;
+  server->matchs[server->nb_matchs] = NULL;
+
+  match_free(m);
+
+  return EXIT_SUCCESS;
+}
 
 /* MESSAGES */
 ssize_t message_read(int sock, void* buffer, size_t bufsize){
@@ -224,8 +309,112 @@ ssize_t message_read(int sock, void* buffer, size_t bufsize){
   return bytes;
 }
 
+ssize_t message_write(int sock, void* buffer, size_t len){
+  ssize_t bytes;
+  if((bytes = read(sock, buffer, len)) < 0){
+    fprintf(stderr, "message_read\n");
+  }
 
-
-int message_write(int sock, char* buffer){
-
+  return bytes;
 }
+
+/* APPLICATIONS */
+int app_server(const char* port){
+  int i;
+  ssize_t bytes;
+  ushort move;
+  MSGTYPE_t msgt;
+  player_p *cur, *p1, *p2;
+  player_p oppo;
+  char buffer[BUFSIZE];
+  fd_set ind;
+  serv_p server;
+
+  if(!(server = serv_new(port))){
+    fprintf(stderr, "serv_new\n");
+    exit(EXIT_FAILURE);
+  }
+
+  for(;;){
+    /* Start a match */
+    if(server->nb_player - 2*server->nb_matchs > 1){
+      ITER_PLAYERS(serv, p1, NULL){
+        if(!(*p1)->match){
+          ITER_PLAYER(serv, p2, p1+1)
+            if(!(*p2)->match)
+              break;
+
+          break;
+        }
+      }
+
+      i = match_start(serv, *p1, *p2);
+    }
+
+    FD_ZERO(&ind);
+    FD_SET(server->socket, &ind);
+    ITER_PLAYERS(serv, cur, NULL)
+      FD_SET((*cur)->socket, &ind);
+
+    select(server->max_fd, &ind, NULL, NULL, NULL);
+
+    /* Smth written on stdin */
+    if(FD_ISSET(STDIN_FILENO, &ind)){
+      bytes = read(STDIN_FILENO, buffer, BUFSIZE);
+      if(bytes < 0){
+        exit(EXIT_FAILURE);
+      }
+    }
+
+    /* New Connexion */
+    if(FD_ISSET(server->socket, &ind)){
+      i = player_connect(server);
+    }
+
+    ITER_PLAYERS(serv, cur, NULL){
+      if(FD_ISSET((*cur)->socket, &ind)){
+        
+        /* at the moment we do not care if a player talks outside of a game */
+        if(!(*cur)->game){
+          bytes = read((*cur)->socket, buffer, BUFSIZE);
+          continue;
+        }
+
+        /*read code*/
+        /*read msg*/
+        /*do stuff*/
+        if((bytes = read((*cur)->socket, &msgt, 1))<1){
+          player_disconnect(serv, *cur, buffer);
+          break;
+        }
+
+        switch(msgt){
+          case m_CHAT :
+            bytes = read((*cur)->socket, buffer+1, BUFSIZE-2);
+            buffer[0] = msgt;
+            buffer[bytes+1] = '\0';
+            /* if *cur is 0 then oppo i 1 and opposite */
+            oppo = (*cur)->g->players[(*cur) == (*cur)->g->players[0]];
+            bytes = write(oppo->socket, buffer, bytes + 1);
+            break;
+
+          case m_MOVE :
+            bytes = read((*cur)->socket, &move, 2);
+            /* get origin pos from move;
+               check if move is in 
+                possible_moves_pos(g, pos, uchar pmoves[27])
+               if yes, do move, 
+                  check if mat or draw
+                    game_end(server, g, out),
+                  otw
+                    send_move to oppo
+               if not, send back invalid;
+             */
+      }
+    }
+  }
+
+  return EXIT_SUCCESS;
+}
+
+int app_client(char* port, char* address, char* name);

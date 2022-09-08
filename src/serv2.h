@@ -18,6 +18,11 @@
 #define MAX_LISTEN 128
 #define BUFSIZE 4096
 
+#define ITER_PLAYERS(serv, cur, start) for(\
+    (cur) = (start) ? (start) : (serv)->players;\
+    (cur) < (serv)->players + (serv)->nbplayers; \
+    (cur)++)
+
 typedef enum outcome{
   BLACK_WON = 1,
   WHITE_WON = 2,
@@ -32,13 +37,13 @@ typedef enum outcome{
    the message len is sent in an uint before the message*/
 
 typedef enum msgtype{
-  INVALID = 0,    /*len 0*/
-  MOVE = 1,       /*len 2 sending (ushort) move*/
-  START = 2,      /*len 1 sending color*/
-  END = 3,        /*len 1 sending outcome*/
-  RECAP = 4,      /*len 2*sizeof clock_t + moves_len*sizeof ushort */
-  CHAT = 5,       /*len +- strlen but care with null terminating char*/
-  IDENTITY = 6    /*len max_name_lenght BUT this may change if we want to 
+  m_INVALID = 0,    /*len 0*/
+  m_MOVE = 1,       /*len 2 sending (ushort) move*/
+  m_START = 2,      /*len 1 sending color*/
+  m_END = 3,        /*len 1 sending outcome*/
+  m_RECAP = 4,      /*len 2*sizeof clock_t + moves_len*sizeof ushort */
+  m_CHAT = 5,       /*len +- strlen but care with null terminating char*/
+  m_IDENTITY = 6    /*len max_name_lenght BUT this may change if we want to 
                       add mode info to player later, such as human or anything*/
 } MSGTYPE_t;
 
@@ -54,6 +59,7 @@ struct player{
 };
 
 struct match{
+  int index;
   player_p players[2];
   clock_t timers[2];
   COLOUR_t current_player;
@@ -103,5 +109,10 @@ int match_end(serv_p server, match_p m);
 ssize_t message_read(int sock, void* buffer, size_t bufsize);
 
 int message_write(int sock, char* buffer);
+
+/* APPLICATIONS */
+int app_server(char* port);
+
+int app_client(char* port, char* address, char* name);
 
 #endif

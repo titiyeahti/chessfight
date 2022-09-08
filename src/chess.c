@@ -292,8 +292,7 @@ int possible_moves_pos(game_p g, uchar pos, ushort* pmoves){
   COLOUR_t c;
   COMPASS_t direc;
   /* 3*7 + 6 maximum number of attacked case by a queen*/
-  uchar dests_array[27];
-  uchar *dests = dests_array;
+  uchar dests[27];
   val = PBOARD(g,pos);
   p = PIECE(val);
   c = COLOUR(val);
@@ -369,8 +368,7 @@ int possible_moves_pos(game_p g, uchar pos, ushort* pmoves){
 
     case ROOK:
       for(i=0; i<4; i++){
-        dests += count;
-        count += iter_dir(g, c, compass_array[i], 0, pos, dests);
+        count += iter_dir(g, c, compass_array[i], 0, pos, dests+count);
       }
 
       break;
@@ -381,16 +379,14 @@ int possible_moves_pos(game_p g, uchar pos, ushort* pmoves){
 
     case BISHOP:
       for(i=4; i<8; i++){
-        dests = dests_array + count;
-        count += iter_dir(g, c, compass_array[i], 0, pos, dests);
+        count += iter_dir(g, c, compass_array[i], 0, pos, dests+count);
       }
 
       break;
 
     case QUEEN:
       for(i=0; i<8; i++){
-        dests = dests_array + count;
-        count += iter_dir(g, c, compass_array[i], 0, pos, dests);
+        count += iter_dir(g, c, compass_array[i], 0, pos, dests+count);
       }
 
       break;
@@ -398,9 +394,10 @@ int possible_moves_pos(game_p g, uchar pos, ushort* pmoves){
     case KING:
       /* one step every direction */
       for(i=0; i<8; i++){
-        dests = dests_array + count;
-        count += iter_dir(g, c, compass_array[i], 1, pos, dests);
+        count += iter_dir(g, c, compass_array[i], 1, pos, dests+count);
       }
+
+      dests = dest_arry;
 
       /* long castle (left) */
       if(LEGAL_CASTLE(g,c,1)){
@@ -428,6 +425,7 @@ int possible_moves_pos(game_p g, uchar pos, ushort* pmoves){
 
       break;
   }
+
 
   /* Compute the moves from the destinations */
   nb_moves = 0;
@@ -470,7 +468,7 @@ int possible_moves_colour(game_p g, COLOUR_t c, ushort* pmoves){
   int pos, count;
   COLOUR_t col;
   for(pos=0; pos<64; pos++){
-    if(PBOARD(g,pos) && PCOLOUR(g,pos))
+    if(PBOARD(g,pos) && PCOLOUR(g,pos) == c)
       count += possible_moves_pos(g, pos, pmoves);
   }
 
@@ -555,12 +553,12 @@ int move_do(game_p g, ushort move){
     g->moves = realloc(g->moves, g->max_moves * sizeof(ushort));
   }
 
-  g->moves[g->moves_len] = move; 
-  g->moves_len ++;
-
   /* move_len_streak */
   g->moves_streak_len ++;
   g->moves_streak_len *= !(p==PAWN || PBOARD(g,dest));
+
+  g->moves[g->moves_len] = move; 
+  g->moves_len ++;
 
   return EXIT_SUCCESS;
 }
