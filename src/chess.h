@@ -275,11 +275,26 @@ int is_move_into_check(game_p g, ushort move);
 
 int is_move_legal(game_p g, ushort move);
 
+/* testing protocol 
+   game 
+   input move
+   print game
+   print possibles moves colour
+
+   check captures
+   check effective moves
+   en passant ^^'
+   check 
+   ...
+ */
+
+/* WARNING */
 int possible_moves_pos(game_p g, uchar pos, ushort* pmoves); 
 
+/* Warning but less */
 int possible_moves_colour(game_p g, COLOUR_t c, ushort* pmoves);
 
-/* DO NOT CHECK MOVE LEGALITY */
+/* VERY DANGEROUS */
 int move_do(game_p g, ushort move);
 
 /* 4 <= len <= 5 (carefull with null terminating character)
