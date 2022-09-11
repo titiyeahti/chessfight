@@ -80,13 +80,12 @@ int main(int argc, int argv[]){
     return EXIT_FAILURE;
 
   for(;;){
-    printf("READ smth\n");
     bytes = read(c2, buffer, BUFF_SIZE);
-    printf("bytes = %d\n", bytes);
     if(bytes < 1)
       return EXIT_FAILURE;
-    printf("Sentence\n");
-    fwrite(buffer, 1, bytes, stdout);
+    printf("WAIT FOR INPUT\n");
+    fgets(buffer, BUFF_SIZE, stdin);
+    printf("%s\n", buffer);
     if(write(c2, buffer, bytes) < 0)
       return EXIT_FAILURE;
   }

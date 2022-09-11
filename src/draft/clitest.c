@@ -70,16 +70,18 @@ int main(int argc, int argv[]){
     if(!ret)
       return EXIT_FAILURE;
 
-    bytes = fputs(buffer, stdout);
     if(bytes < 0)
       return EXIT_FAILURE;
 
     if(write(sfd, buffer, strlen(buffer)) < 0)
       return EXIT_FAILURE;
 
+    printf("client wrote : %s\n", buffer);
+
     if(bytes = read(sfd, buffer, BUFF_SIZE) < 0)
       return EXIT_FAILURE;
 
+    printf("client read : %s\n", buffer);
   }
 
 

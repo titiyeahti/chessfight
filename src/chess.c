@@ -397,8 +397,6 @@ int possible_moves_pos(game_p g, uchar pos, ushort* pmoves){
         count += iter_dir(g, c, compass_array[i], 1, pos, dests+count);
       }
 
-      dests = dest_arry;
-
       /* long castle (left) */
       if(LEGAL_CASTLE(g,c,1)){
         if(PBOARD(g,pos-1) == EMPTY && PBOARD(g,pos-2) == EMPTY){

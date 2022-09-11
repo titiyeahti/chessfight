@@ -27,6 +27,7 @@ typedef enum outcome{
   BLACK_WON = 1,
   WHITE_WON = 2,
   DRAW = 3,
+  /* disconnected opponent */
   OPPO_LEFT = 4
 } OUTCOME_t;
 
