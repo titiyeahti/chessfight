@@ -62,6 +62,16 @@ void board_print(game_p g){
   printf("\n");
 }
 
+void moves_print_ext(ushort* moves, int len){
+  int i;
+  char move[6];
+  for(i=0; i<len; i++){
+    move_to_string(moves[i], move);
+    printf("%s ", move);
+  }
+  printf("\n");
+}
+
 void moves_print(game_p g){
   int i;
   char move[6];
@@ -74,10 +84,8 @@ void moves_print(game_p g){
       if(!(i == g->moves_len - 1))
         printf(", ");
     }
-
-    if((i == g->moves_len - 1))
-      printf("\n");
   }
+  printf("\n");
 }
 
 void game_print(game_p g){
@@ -115,6 +123,8 @@ int iter_dir(game_p g, COLOUR_t c, COMPASS_t comp,
   return count;
 }
 
+
+/* Tout pourri */
 int threats_dir(game_p g, COLOUR_t c, COMPASS_t comp, 
     uchar pos, uchar* threats){
   int count, i, ldv ;
@@ -209,6 +219,7 @@ int iter_knight(game_p g, COLOUR_t c, uchar pos, uchar* dests){
     if(dest > 0 && dest < 64){
       if((PBOARD(g,dest) && PCOLOUR(g,dest) != c) 
           || (!PBOARD(g,dest))){
+        printf("start, dest = %d, %d\n", pos, dest);
         if(dests)
           dests[count] = dest;
 
@@ -315,7 +326,7 @@ int possible_moves_pos(game_p g, uchar pos, ushort* pmoves){
           count ++;
           
           /* If pawn on starting pos and tile 2 steps ahead is empty */
-          if(pos>(47-40*c) && pos<(16-40*c) && !PBOARD(g,pos+2*direc)){
+          if(pos>(47-40*c) && pos<(56-40*c) && !PBOARD(g,pos+2*direc)){
             dests[count] = pos + 2*direc;
             
             count ++;
@@ -431,7 +442,7 @@ int possible_moves_pos(game_p g, uchar pos, ushort* pmoves){
     for(i=0; i<count; i++){
       if(!is_tile_threatened(g, c, dests[i], NULL)){
         if(pmoves)
-          pmoves[nb_moves] = pos + dests[i] << 6;
+          pmoves[nb_moves] = pos + (dests[i] << 6);
 
         nb_moves ++;
       }
@@ -463,11 +474,13 @@ int possible_moves_pos(game_p g, uchar pos, ushort* pmoves){
 }
 
 int possible_moves_colour(game_p g, COLOUR_t c, ushort* pmoves){
-  int pos, count;
+  int pos, count=0;
   COLOUR_t col;
   for(pos=0; pos<64; pos++){
-    if(PBOARD(g,pos) && PCOLOUR(g,pos) == c)
-      count += possible_moves_pos(g, pos, pmoves);
+    if(PBOARD(g,pos) && PCOLOUR(g,pos) == c){
+      printf("POS : %d\n", pos);
+      count += possible_moves_pos(g, pos, pmoves+count);
+    }
   }
 
   return count;

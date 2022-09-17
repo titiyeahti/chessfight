@@ -45,8 +45,8 @@ static const PIECE_t back_row[] = {
 /* The calculs are here to ease the reading and do not matter because
    they are done during compilation */
 static const int knight_moves[] = {
-  2*8 + 1, 2*8 - 1, 2*1 - 8, 2*1 + 8,
-  -2*8 + 1, -2*8 - 1, -2*1 + 8, -2*1 - 8
+  17, 15, -6, 10,
+  -15, -17, 6, -10
 };
 
 static const char pieces_string[] = ".prnbqkPRNBQK";
@@ -190,6 +190,7 @@ void game_free(game_p g);
 */
 void board_print(game_p g);
 
+void moves_print_ext(ushort* moves, int len);
 /*!
   \brief Print the moves played during \a g to stdout.
   \param g game pointer
