@@ -13,6 +13,7 @@
 
 #define ABS(i) ((i) < 0 ? -(i) : (i))
 #define MAX(a,b) ((a)>(b) ? (a) : (b))
+#define MIN(a,b) ((a)<(b) ? (a) : (b))
 #define MAX_MOVES 64
 
 typedef unsigned int uint;
@@ -32,6 +33,18 @@ typedef enum compass {
   NE = 9, NW = 7, SE = -7, SW = -9
 } COMPASS_t;
 
+/* pos, dir, 
+   la pièce traverse-t-elle le bord pdt mouv ?
+   col = pos%8
+   delta col ~ dir % 8
+   col + delta in [0..7] suffisant ?
+   touver f t.q. 
+   f(1) = f(9) = f(-7) = 1
+   & f(-1) = f(7) = f(-9) = -1
+
+
+ */
+
 /* This const string will be used to convert pieces to char.
    Black are lowercase, and white uppercase.
    n stands for KNIGHT to differenciate from KING.
@@ -42,8 +55,11 @@ static const PIECE_t back_row[] = {
   KING, BISHOP, KNIGHT, ROOK
 };
 
-/* The calculs are here to ease the reading and do not matter because
-   they are done during compilation */
+/*
+   17 -> 1
+   15 -> -1 (7)
+
+
 static const int knight_moves[] = {
   17, 15, -6, 10,
   -15, -17, 6, -10
@@ -109,6 +125,8 @@ typedef game_t* game_p;
 
 #define BOARD(g,i,j) (g)->board[COORD2INT(i,j)]
 
+#define IS_IN_BOARD(pos) ((pos) >= 0 && (pos) < 64)
+
 #define CPIECE(g,i,j) ((BOARD(g,i,j))&7)
 
 #define CCOLOUR(g,i,j) (((BOARD(g,i,j))&8)>>3)
@@ -149,6 +167,11 @@ typedef game_t* game_p;
 #define MOVE_END(m) (((m)&(63<<6))>>6)
 
 #define DELTA_MOVE(m) (MOVE_END(m) - MOVE_START(m))
+
+#define COMP_DELTA_COL(cmp) ((uint) (cmp) % 8)
+
+/* DIRECTION MODULEE*/
+#define COMP_CENTER(dm) ((dm) < 3 ? (dm) : (dm) - 8)
 
 #define MOVE_PROM(m) (((m)&(7<<13))>>13)
 
@@ -235,8 +258,8 @@ int iter_dir(game_p g, COLOUR_t c, COMPASS_t comp,
   \returns The number of direc threats if any and minus the number 
   of indirect threats otherwise.
 */
-int threats_dir(game_p g, COLOUR_t c, COMPASS_t comp, 
-    uchar pos, uchar* threats);
+int threat_dir(game_p g, COLOUR_t c, COMPASS_t comp, 
+    uchar pos, uchar* threat);
 
 /*!
   Look for the availables destinations from \a pos for a knight.

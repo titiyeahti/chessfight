@@ -95,11 +95,19 @@ void game_print(game_p g){
 
 int iter_dir(game_p g, COLOUR_t c, COMPASS_t comp, 
     int max, uchar pos, uchar* dests){ 
-  int count, dest, i;
+  int count, dest, col, dm, i;
   count = 0;
-  i=0;
-  max = max ? max : 8;
-  for(dest=pos+comp; dest>0 && dest<64 && i<max; dest+=comp){
+
+  dm = COMP_DELTA_COL(comp);
+  dm = COMP_CENTER(dm);
+
+  col = pos & 7;
+  max = max ? max : 8; 
+
+  max = MIN(max, ABS(col/dm));
+
+  /*(dir & 7) + (pos & */
+  for(dest=pos+comp; IS_IN_BOARD(dest) && i < max; dest+=comp){
     if(!PBOARD(g, dest)){
       if(dest)
         dests[count] = dest;
@@ -123,31 +131,41 @@ int iter_dir(game_p g, COLOUR_t c, COMPASS_t comp,
   return count;
 }
 
+/* threat is only one char long */
+int threat_dir(game_p g, COLOUR_t c, COMPASS_t comp, 
+    uchar pos, uchar* threat){
+  int count, col, dm, max, i, dest, obstacle;
 
-/* Tout pourri */
-int threats_dir(game_p g, COLOUR_t c, COMPASS_t comp, 
-    uchar pos, uchar* threats){
-  int count, i, ldv ;
   COMPASS_t pawn_e, pawn_w;
   PIECE_t p;
-  i=1;
-  ldv=1;
   count=0;
+  obstacle=0;
   
+  dm = COMP_DELTA_COL(comp);
+  dm = COMP_CENTER(dm);
+
+  col = pos & 7;
+
+  /* TODO create a macro*/
+  max = dm < 0 ? -(col/dm) : (7 - col)/dm;
+
   /* iterrate from pos in the direction comp */
-  for(pos=pos+comp; pos<64 && pos>0; pos+=comp){
+  for(dest=pos+comp; IS_IN_BOARD(dest) 
+      && !count
+      && !obstacle
+      && i < max; dest+=comp){
     /* if no direct threats are detected we look for the inderect ones*/
-    if(PCOLOUR(g,pos) == c){
-      if(count)
-        break;
-      ldv =-1;
-    }
+    if(PBOARD(g,dest) && PCOLOUR(g,dest) == c)
+      obstacle = 1;
+
     else{
-      p = PPIECE(g,pos);
+      p = PPIECE(g,dest);
       switch (p){
         case KING :
           if(i==1)
-            goto save_threat;
+            count = 1;
+          else 
+            obstacle = 1;
 
         case PAWN :
           /* A black pawn menaces from north 
@@ -157,46 +175,58 @@ int threats_dir(game_p g, COLOUR_t c, COMPASS_t comp,
           pawn_e = (1-2*c)*NE;
           /* do struff */
           if(i==1 && (comp == pawn_e || comp == pawn_w))
-            goto save_threat;
+            count = 1;
+          else 
+            obstacle = 1;
 
-          break;
         case ROOK:
           if(!(comp%2) || (ABS(comp) < 2))
-            goto save_threat;
-
+            count = 1;
+          else 
+            obstacle = 1;
           break;
 
         case BISHOP:
           if(comp%2 && (ABS(comp) > 2))
-            goto save_threat;
-
+            count = 1;
+          else 
+            obstacle = 1;
           break;
 
         case QUEEN:
-          goto save_threat;
+          count = 1;
 
           break;
+
+        case KNIGHT:
+          obstacle = 1;
+          break;
+
+        case EMPTY:
+          break;
       }
-
-save_threat:
-          if(threats)
-            threats[count] = pos;
-
-          count++;
-
     }
 
     /* increment i*/
     i++;
   }
-  return ldv*count;
+  if(count && threat)
+    *threat = dest;
+
+  return count;
 }
 
 int threats_knight(game_p g, COLOUR_t c, uchar pos, uchar* threats){
-  int count, i, dest;
+  int count = 0, i, dm, col, dest;
+  col = pos & 7;
+
   for(i=0; i<8; i++){
     dest = pos + knight_moves[i];
-    if(dest > 0 && dest < 64){
+    dm = COMP_DELTA_COL(comp);
+    dm = COMP_CENTER(dm);
+    dest = pos + knight_moves[i];
+    /* in the board */
+    if(IS_IN_BOARD(dest) && col + dm > -1 && col + dm < 8){
       if(PBOARD(g, dest) == KNIGHT + (OPPONENT(c) << 3)){
         if(threats)
           threats[count] = dest;
@@ -210,13 +240,15 @@ int threats_knight(game_p g, COLOUR_t c, uchar pos, uchar* threats){
 }
 
 int iter_knight(game_p g, COLOUR_t c, uchar pos, uchar* dests){
-  int count = 0;
-  int i;
-  int dest;
+  int count = 0, i, dm, col, dest;
+  col = pos & 7;
+
   for(i=0; i<8; i++){
+    dm = COMP_DELTA_COL(comp);
+    dm = COMP_CENTER(dm);
     dest = pos + knight_moves[i];
     /* in the board */
-    if(dest > 0 && dest < 64){
+    if(IS_IN_BOARD(dest) && col + dm > -1 && col + dm < 8){
       if((PBOARD(g,dest) && PCOLOUR(g,dest) != c) 
           || (!PBOARD(g,dest))){
         printf("start, dest = %d, %d\n", pos, dest);
@@ -338,6 +370,7 @@ int possible_moves_pos(game_p g, uchar pos, ushort* pmoves){
       direc = (2*c-1)*NE;
       flag = pos + direc;
       if(flag < 64 && flag > 0){
+        /* ATTENTION TODO*/
         if(PBOARD(g,flag) && !(PBOARD(g,flag) & (c << 3))){
           dests[count] = pos + direc;
           
